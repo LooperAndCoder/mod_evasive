@@ -53,6 +53,9 @@ module AP_MODULE_DECLARE_DATA evasive20_module;
 #define DEFAULT_BLOCKING_PERIOD 10      // Default for Detected IPs; blocked for 10 seconds
 #define DEFAULT_LOG_DIR		"/tmp"  // Default temp directory
 
+//TDL Code change: Added log unblock definition. 1=On, 0=Off
+#define DEFAULT_LOG_UNBLOCK 1  
+
 /* END DoS Evasive Maneuvers Definitions */
 
 /* BEGIN NTT (Named Timestamp Tree) Headers */
@@ -95,6 +98,8 @@ struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c);
 /* BEGIN DoS Evasive Maneuvers Globals */
 
 struct ntt *hit_list;	// Our dynamic hash table
+//TDL Code change: Added log_unblock variable
+static int log_unblock = DEFAULT_LOG_UNBLOCK;
 
 static unsigned long hash_table_size = DEFAULT_HASH_TBL_SIZE;
 static int page_count = DEFAULT_PAGE_COUNT;
@@ -115,6 +120,8 @@ static void * create_hit_list(apr_pool_t *p, server_rec *s)
     /* Create a new hit list for this listener */
 
     hit_list = ntt_create(hash_table_size);
+    //TDL Code change: Added return value null. return type is void *
+    return NULL;
 }
 
 static const char *whitelist(cmd_parms *cmd, void *dconfig, const char *ip)
@@ -139,11 +146,11 @@ static int access_checker(request_rec *r)
       time_t t = time(NULL);
 
       /* Check whitelist */
-      if (is_whitelisted(r->connection->remote_ip)) 
+      if (is_whitelisted(r->useragent_ip)) 
         return OK;
 
       /* First see if the IP itself is on "hold" */
-      n = ntt_find(hit_list, r->connection->remote_ip);
+      n = ntt_find(hit_list, r->useragent_ip);
 
       if (n != NULL && t-n->timestamp<blocking_period) {
  
@@ -154,15 +161,19 @@ static int access_checker(request_rec *r)
       /* Not on hold, check hit stats */
       } else {
 
+        // TDL Code change. Log unblocking event if the IP was previously blocked
+        if (log_unblock && n != NULL && t-n->timestamp >= blocking_period) {
+            LOG(LOG_INFO, "Unblocking IP address %s: blocking period expired.", r->useragent_ip);
+        }
         /* Has URI been hit too much? */
-        snprintf(hash_key, 2048, "%s_%s", r->connection->remote_ip, r->uri);
+        snprintf(hash_key, 2048, "%s_%s", r->useragent_ip, r->uri);
         n = ntt_find(hit_list, hash_key);
         if (n != NULL) {
 
           /* If URI is being hit too much, add to "hold" list and 403 */
           if (t-n->timestamp<page_interval && n->count>=page_count) {
             ret = HTTP_FORBIDDEN;
-            ntt_insert(hit_list, r->connection->remote_ip, time(NULL));
+            ntt_insert(hit_list, r->useragent_ip, time(NULL));
           } else {
 
             /* Reset our hit count list as necessary */
@@ -177,14 +188,14 @@ static int access_checker(request_rec *r)
         }
 
         /* Has site been hit too much? */
-        snprintf(hash_key, 2048, "%s_SITE", r->connection->remote_ip);
+        snprintf(hash_key, 2048, "%s_SITE", r->useragent_ip);
         n = ntt_find(hit_list, hash_key);
         if (n != NULL) {
 
           /* If site is being hit too much, add to "hold" list and 403 */
           if (t-n->timestamp<site_interval && n->count>=site_count) {
             ret = HTTP_FORBIDDEN;
-            ntt_insert(hit_list, r->connection->remote_ip, time(NULL));
+            ntt_insert(hit_list, r->useragent_ip, time(NULL));
           } else {
 
             /* Reset our hit count list as necessary */
@@ -204,29 +215,40 @@ static int access_checker(request_rec *r)
         char filename[1024];
         struct stat s;
         FILE *file;
-
-        snprintf(filename, sizeof(filename), "%s/dos-%s", log_dir != NULL ? log_dir : DEFAULT_LOG_DIR, r->connection->remote_ip);
+        // TDL Code change: Use a timestamped filename to differentiate logs
+        time_t now = time(NULL);
+        struct tm *tm_info = localtime(&now);
+        char datetime[64];
+        strftime(datetime, sizeof(datetime), "%Y%m%d%H%M%S", tm_info);
+        snprintf(filename, sizeof(filename), "%s/dos-%s-%s", log_dir != NULL ? log_dir : DEFAULT_LOG_DIR, r->useragent_ip, datetime);
+        // snprintf(filename, sizeof(filename), "%s/dos-%s", log_dir != NULL ? log_dir : DEFAULT_LOG_DIR, r->useragent_ip);
         if (stat(filename, &s)) {
           file = fopen(filename, "w");
           if (file != NULL) {
-            fprintf(file, "%ld\n", getpid());
+            // fprintf(file, "%ld\n", getpid());
+            // TDL Code change: %ld to %d, getpid returns pid_t, which is int type
+            fprintf(file, "%d\n", getpid());
+
             fclose(file);
 
-            LOG(LOG_ALERT, "Blacklisting address %s: possible DoS attack.", r->connection->remote_ip);
+            LOG(LOG_ALERT, "Blacklisting address %s: possible DoS attack.", r->useragent_ip);
             if (email_notify != NULL) {
               snprintf(filename, sizeof(filename), MAILER, email_notify);
               file = popen(filename, "w");
               if (file != NULL) {
                 fprintf(file, "To: %s\n", email_notify);
-                fprintf(file, "Subject: HTTP BLACKLIST %s\n\n", r->connection->remote_ip);
-                fprintf(file, "mod_evasive HTTP Blacklisted %s\n", r->connection->remote_ip);
+                fprintf(file, "Subject: HTTP BLACKLIST %s\n\n", r->useragent_ip);
+                fprintf(file, "mod_evasive HTTP Blacklisted %s\n", r->useragent_ip);
                 pclose(file);
               }
             }
 
             if (system_command != NULL) {
-              snprintf(filename, sizeof(filename), system_command, r->connection->remote_ip);
-              system(filename);
+              snprintf(filename, sizeof(filename), system_command, r->useragent_ip);
+            //   system(filename);
+            // TDL Code change: type cast to (void) to avoid warnings
+              (void)system(filename);
+
             }
  
           } else {
@@ -298,6 +320,9 @@ static apr_status_t destroy_hit_list(void *not_used) {
   ntt_destroy(hit_list);
   free(email_notify);
   free(system_command);
+  //TDL Code change: return apr_status_t
+  return APR_SUCCESS; 
+
 }
 
 
@@ -416,7 +441,8 @@ struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) 
     /* Create a new node */
     new_node = ntt_node_create(key);
     new_node->timestamp = timestamp;
-    new_node->timestamp = 0;
+    // TDL Code change: This seems bug since it set the timestamp to 0. commented it out.
+    // new_node->timestamp = 0;
 
     ntt->items++;
 
@@ -643,7 +669,16 @@ get_system_command(cmd_parms *cmd, void *dconfig, const char *value) {
  
   return NULL;
 } 
-
+// TDL Code change: Added get_log_unblock function
+static const char *
+get_log_unblock(cmd_parms *cmd, void *dconfig, const char *value) {
+  if (value && (strcasecmp(value, "On") == 0 || strcmp(value, "1") == 0)) {
+    log_unblock = 1;
+  } else {
+    log_unblock = 0;
+  }
+  return NULL;
+}
 /* END Configuration Functions */
 
 static const command_rec access_cmds[] =
@@ -671,6 +706,9 @@ static const command_rec access_cmds[] =
 
 	AP_INIT_TAKE1("DOSLogDir", get_log_dir, NULL, RSRC_CONF,
 		"Set log dir"),
+    // TDL Code change: Added DOSLogUnblock directive
+        AP_INIT_TAKE1("DOSLogUnblock", get_log_unblock, NULL, RSRC_CONF,
+            "Enable or disable logging of unblocking events (On/Off)"),
 
 	AP_INIT_TAKE1("DOSSystemCommand", get_system_command, NULL, RSRC_CONF,
 		"Set system command on DoS"),
@@ -696,4 +734,3 @@ module AP_MODULE_DECLARE_DATA evasive20_module =
     access_cmds,
     register_hooks
 };
-
