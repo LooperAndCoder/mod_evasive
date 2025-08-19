@@ -42,7 +42,7 @@ module AP_MODULE_DECLARE_DATA evasive20_module;
 
 /* BEGIN DoS Evasive Maneuvers Definitions */
 
-#define MAILER	"/bin/mail %s"
+#define MAILER  "/bin/mail %s"
 #define  LOG( A, ... ) { openlog("mod_evasive", LOG_PID, LOG_DAEMON); syslog( A, __VA_ARGS__ ); closelog(); }
 
 #define DEFAULT_HASH_TBL_SIZE   3097ul  // Default hash table size
@@ -51,7 +51,7 @@ module AP_MODULE_DECLARE_DATA evasive20_module;
 #define DEFAULT_PAGE_INTERVAL   1       // Default 1 Second page interval
 #define DEFAULT_SITE_INTERVAL   1       // Default 1 Second site interval
 #define DEFAULT_BLOCKING_PERIOD 10      // Default for Detected IPs; blocked for 10 seconds
-#define DEFAULT_LOG_DIR		"/tmp"  // Default temp directory
+#define DEFAULT_LOG_DIR         "/tmp"  // Default temp directory
 
 //TDL Code change: Added log unblock definition. 1=On, 0=Off
 #define DEFAULT_LOG_UNBLOCK 1  
@@ -85,10 +85,10 @@ struct ntt_c {
 
 struct ntt *ntt_create(long size);
 int ntt_destroy(struct ntt *ntt);
-struct ntt_node	*ntt_find(struct ntt *ntt, const char *key);
-struct ntt_node	*ntt_insert(struct ntt *ntt, const char *key, time_t timestamp);
+struct ntt_node *ntt_find(struct ntt *ntt, const char *key);
+struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp);
 int ntt_delete(struct ntt *ntt, const char *key);
-long ntt_hashcode(struct ntt *ntt, const char *key);	
+long ntt_hashcode(struct ntt *ntt, const char *key);
 struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c);
 struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c);
 
@@ -97,7 +97,7 @@ struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c);
 
 /* BEGIN DoS Evasive Maneuvers Globals */
 
-struct ntt *hit_list;	// Our dynamic hash table
+struct ntt *hit_list;   // Our dynamic hash table
 //TDL Code change: Added log_unblock variable
 static int log_unblock = DEFAULT_LOG_UNBLOCK;
 
@@ -137,8 +137,9 @@ static const char *whitelist(cmd_parms *cmd, void *dconfig, const char *ip)
 static int access_checker(request_rec *r) 
 {
     int ret = OK;
-
-    /* BEGIN DoS Evasive Maneuvers Code */
+/*TDL Added code*/
+    const char *block_trigger = NULL;
+/* BEGIN DoS Evasive Maneuvers Code */
 
     if (r->prev == NULL && r->main == NULL && hit_list != NULL) {
       char hash_key[2048];
@@ -173,6 +174,8 @@ static int access_checker(request_rec *r)
           /* If URI is being hit too much, add to "hold" list and 403 */
           if (t-n->timestamp<page_interval && n->count>=page_count) {
             ret = HTTP_FORBIDDEN;
+            /*TDL Added to trace blocking reason*/
+            block_trigger = "Page Interval";
             ntt_insert(hit_list, r->useragent_ip, time(NULL));
           } else {
 
@@ -195,6 +198,8 @@ static int access_checker(request_rec *r)
           /* If site is being hit too much, add to "hold" list and 403 */
           if (t-n->timestamp<site_interval && n->count>=site_count) {
             ret = HTTP_FORBIDDEN;
+                      /*TDL Added to trace blocking reason*/
+            block_trigger = "Site Interval";
             ntt_insert(hit_list, r->useragent_ip, time(NULL));
           } else {
 
@@ -231,7 +236,16 @@ static int access_checker(request_rec *r)
 
             fclose(file);
 
-            LOG(LOG_ALERT, "Blacklisting address %s: possible DoS attack.", r->useragent_ip);
+            //LOG(LOG_ALERT, "Blacklisting address %s: possible DoS attack.", r->useragent_ip);
+            //TDL Added to trace blocking reason
+            if (block_trigger) {
+                    LOG(LOG_ALERT, "Blacklisting address %s: triggered by %s, URI: %s", 
+                        r->useragent_ip, block_trigger, r->uri);
+                }        
+            else {
+                LOG(LOG_ALERT, "Blacklisting address %s: possible DoS attack.", r->useragent_ip);
+                }
+
             if (email_notify != NULL) {
               snprintf(filename, sizeof(filename), MAILER, email_notify);
               file = popen(filename, "w");
@@ -253,7 +267,7 @@ static int access_checker(request_rec *r)
  
           } else {
             LOG(LOG_ALERT, "Couldn't open logfile %s: %s",filename, strerror(errno));
-	  }
+          }
 
         } /* if (temp file does not exist) */
 
@@ -264,7 +278,7 @@ static int access_checker(request_rec *r)
     /* END DoS Evasive Maneuvers Code */
 
     if (ret == HTTP_FORBIDDEN
-	&& (ap_satisfies(r) != SATISFY_ANY || !ap_some_auth_required(r))) {
+        && (ap_satisfies(r) != SATISFY_ANY || !ap_some_auth_required(r))) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
             "client denied by server configuration: %s",
             r->filename);
@@ -355,11 +369,11 @@ struct ntt_node *ntt_node_create(const char *key) {
 
     node = (struct ntt_node *) malloc(sizeof(struct ntt_node));
     if (node == NULL) {
-	return NULL;
+        return NULL;
     }
     if ((node_key = strdup(key)) == NULL) {
         free(node);
-	return NULL;
+        return NULL;
     }
     node->key = node_key;
     node->timestamp = time(NULL);
@@ -417,8 +431,8 @@ struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) 
     if (ntt == NULL) return NULL;
 
     hash_code = ntt_hashcode(ntt, key);
-    parent	= NULL;
-    node	= ntt->tbl[hash_code];
+    parent      = NULL;
+    node        = ntt->tbl[hash_code];
 
     while (node != NULL) {
         if (strcmp(key, node->key) == 0) { 
@@ -426,7 +440,7 @@ struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) 
             node = NULL;
         }
 
-	if (new_node == NULL) {
+        if (new_node == NULL) {
           parent = node;
           node = node->next;
         }
@@ -448,7 +462,7 @@ struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) 
 
     /* Insert */
     if (parent) {  /* Existing parent */
-	parent->next = new_node;
+        parent->next = new_node;
         return new_node;  /* Return the locked node */
     }
 
@@ -683,40 +697,40 @@ get_log_unblock(cmd_parms *cmd, void *dconfig, const char *value) {
 
 static const command_rec access_cmds[] =
 {
-	AP_INIT_TAKE1("DOSHashTableSize", get_hash_tbl_size, NULL, RSRC_CONF, 
-		"Set size of hash table"),
+        AP_INIT_TAKE1("DOSHashTableSize", get_hash_tbl_size, NULL, RSRC_CONF, 
+                "Set size of hash table"),
 
         AP_INIT_TAKE1("DOSPageCount", get_page_count, NULL, RSRC_CONF,
-		"Set maximum page hit count per interval"),
+                "Set maximum page hit count per interval"),
 
         AP_INIT_TAKE1("DOSSiteCount", get_site_count, NULL, RSRC_CONF,
-		"Set maximum site hit count per interval"),
+                "Set maximum site hit count per interval"),
 
         AP_INIT_TAKE1("DOSPageInterval", get_page_interval, NULL, RSRC_CONF,
-		"Set page interval"),
+                "Set page interval"),
 
-	AP_INIT_TAKE1("DOSSiteInterval", get_site_interval, NULL, RSRC_CONF,
-		"Set site interval"),
+        AP_INIT_TAKE1("DOSSiteInterval", get_site_interval, NULL, RSRC_CONF,
+                "Set site interval"),
 
         AP_INIT_TAKE1("DOSBlockingPeriod", get_blocking_period, NULL, RSRC_CONF,
-		"Set blocking period for detected DoS IPs"),
+                "Set blocking period for detected DoS IPs"),
 
-	AP_INIT_TAKE1("DOSEmailNotify", get_email_notify, NULL, RSRC_CONF,
-		"Set email notification"),
+        AP_INIT_TAKE1("DOSEmailNotify", get_email_notify, NULL, RSRC_CONF,
+                "Set email notification"),
 
-	AP_INIT_TAKE1("DOSLogDir", get_log_dir, NULL, RSRC_CONF,
-		"Set log dir"),
+        AP_INIT_TAKE1("DOSLogDir", get_log_dir, NULL, RSRC_CONF,
+                "Set log dir"),
     // TDL Code change: Added DOSLogUnblock directive
         AP_INIT_TAKE1("DOSLogUnblock", get_log_unblock, NULL, RSRC_CONF,
             "Enable or disable logging of unblocking events (On/Off)"),
 
-	AP_INIT_TAKE1("DOSSystemCommand", get_system_command, NULL, RSRC_CONF,
-		"Set system command on DoS"),
+        AP_INIT_TAKE1("DOSSystemCommand", get_system_command, NULL, RSRC_CONF,
+                "Set system command on DoS"),
 
         AP_INIT_ITERATE("DOSWhitelist", whitelist, NULL, RSRC_CONF,
                 "IP-addresses wildcards to whitelist"),
 
-	{ NULL }
+        { NULL }
 };
 
 static void register_hooks(apr_pool_t *p) {
