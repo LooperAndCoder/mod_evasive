@@ -24,6 +24,7 @@ cat <<EOF > $CONF_FILE
     DOSLogUnblock On
     # Whitelist internal, loopback, and public IPs
     DOSWhitelist 127.0.0.1
+    DOSWhitelist 54.227.247.150
     DOSWhitelist $PRIVATE_IP
     DOSWhitelist $PUBLIC_IP
 </IfModule>
