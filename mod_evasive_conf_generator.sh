@@ -27,3 +27,4 @@ cat <<EOF > $CONF_FILE
     DOSWhitelist $PRIVATE_IP
     DOSWhitelist $PUBLIC_IP
 </IfModule>
+EOF
