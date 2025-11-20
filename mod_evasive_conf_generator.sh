@@ -13,13 +13,13 @@ CONF_FILE="mod_evasive.conf"
 cat <<EOF > $CONF_FILE
 <IfModule mod_evasive20.c>
     DOSHashTableSize    3097
-    DOSPageCount        10
-    DOSSiteCount        100
+    DOSPageCount        15
+    DOSSiteCount        150
     DOSPageInterval     1
     DOSSiteInterval     1
     DOSBlockingPeriod   30
     ErrorDocument 403 /custom_403.html
-    DOSEmailNotify      c.kim@austin.utexas.edu
+    DOSEmailNotify      abcd1@abcdtest.abcdtest
     DOSLogDir           "/var/log/mod_evasive"
     DOSLogUnblock On
     # Whitelist internal, loopback, and public IPs
