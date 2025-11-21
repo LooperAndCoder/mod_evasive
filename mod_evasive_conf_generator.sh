@@ -19,7 +19,7 @@ cat <<EOF > $CONF_FILE
     DOSSiteInterval     1
     DOSBlockingPeriod   30
     ErrorDocument 403 /custom_403.html
-    DOSEmailNotify      abcd1@abcdtest.abcdtest
+    # DOSEmailNotify      abcd1@abcdtest.abcdtest
     DOSLogDir           "/var/log/mod_evasive"
     DOSLogUnblock On
     # Whitelist internal, loopback, and public IPs
