@@ -1,0 +1,43 @@
+--- mod_evasive20.c.backup      2025-11-21 08:46:12.398330959 -0600
++++ mod_evasive20.c     2025-11-21 09:03:36.060000160 -0600
+@@ -119,13 +119,24 @@
+ {
+     /* Create a new hit list for this listener */
+ 
+-    hit_list = ntt_create(hash_table_size);
++//    hit_list = ntt_create(hash_table_size);
+     //TDL Code change: Added return value null. return type is void *
++    //protect whitelist to check hit_list 
++    if (hit_list == NULL) {
++        hit_list = ntt_create(hash_table_size);
++    }
+     return NULL;
+ }
+ 
+ static const char *whitelist(cmd_parms *cmd, void *dconfig, const char *ip)
+ {
++       //TDL Code change: 
++   if (hit_list == NULL) {
++        hit_list = ntt_create(hash_table_size);
++        if (hit_list == NULL)
++            return "Failed to create hit_list for whitelist";
++    }
++      
+   char entry[128];
+   snprintf(entry, sizeof(entry), "WHITELIST_%s", ip);
+   ntt_insert(hit_list, entry, time(NULL));
+@@ -139,6 +150,14 @@
+     int ret = OK;
+ /*TDL Added code*/
+     const char *block_trigger = NULL;
++        /* hit_list가 NULL이면 생성 */
++    if (hit_list == NULL) {
++        hit_list = ntt_create(hash_table_size);
++        if (hit_list == NULL) {
++            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Failed to create hit_list");
++            return HTTP_INTERNAL_SERVER_ERROR;
++        }
++    }
+ /* BEGIN DoS Evasive Maneuvers Code */
+ 
+     if (r->prev == NULL && r->main == NULL && hit_list != NULL) {
