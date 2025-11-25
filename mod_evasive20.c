@@ -184,6 +184,7 @@ static int access_checker(request_rec *r)
         // TDL Code change. Log unblocking event if the IP was previously blocked
         if (log_unblock && n != NULL && t-n->timestamp >= blocking_period) {
             LOG(LOG_INFO, "Unblocking IP address %s: blocking period expired.", r->useragent_ip);
+            ntt_delete(hit_list, r->useragent_ip); // Remove the IP node after unblocking
         }
         /* Has URI been hit too much? */
         snprintf(hash_key, 2048, "%s_%s", r->useragent_ip, r->uri);
