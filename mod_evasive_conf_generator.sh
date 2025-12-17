@@ -12,9 +12,9 @@ CONF_FILE="mod_evasive.conf"
 # Create config file
 cat <<EOF > $CONF_FILE
 <IfModule mod_evasive20.c>
-    DOSHashTableSize    3097
-    DOSPageCount        15
-    DOSSiteCount        150
+    DOSHashTableSize    12289
+    DOSPageCount        20
+    DOSSiteCount        500
     DOSPageInterval     1
     DOSSiteInterval     1
     DOSBlockingPeriod   30
