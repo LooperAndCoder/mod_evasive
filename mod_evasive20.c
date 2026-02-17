@@ -397,6 +397,9 @@ struct ntt_node *ntt_node_create(const char *key) {
     }
     node->key = node_key;
     node->timestamp = time(NULL);
+    #fixed Site interval issue. The malloc create new nodes, the count variable contains random garbage memory instead of starting at 0 or 1.
+    node->count = 0;
+  
     node->next = NULL;
     return(node);
 }
